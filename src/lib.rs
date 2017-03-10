@@ -8,7 +8,7 @@ extern crate rand;
 #[cfg(feature = "redis-backend")] extern crate r2d2_redis;
 
 use iron::prelude::*;
-use iron::middleware::{AroundMiddleware,Handler};
+use iron::middleware::{BeforeMiddleware,AfterMiddleware,AroundMiddleware,Handler};
 use iron::typemap;
 
 pub mod backends;
@@ -118,6 +118,24 @@ impl<B: SessionBackend> AroundMiddleware for SessionStorage<B> {
             };
             res
         })
+    }
+}
+
+impl<B: SessionBackend> BeforeMiddleware for SessionStorage<B> {
+    fn before(&self, req: &mut Request) -> IronResult<()> {
+        let s = self.backend.from_request(req);
+        req.extensions.insert::<SessionKey>(Session::new(Box::new(s)));
+        Ok(())
+    }
+}
+
+impl<B: SessionBackend> AfterMiddleware for SessionStorage<B> {
+    fn after(&self, req: &mut Request, mut res: Response) -> IronResult<Response> {
+        let s = req.extensions.remove::<SessionKey>().unwrap();
+        if s.has_changed {
+            try!(s.inner.write(&mut res));
+        };
+        Ok(res)
     }
 }
 
